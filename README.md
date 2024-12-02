@@ -14,6 +14,14 @@ ollama serve &
 ```
 
 ## Python requirements
+Create a virtual environment with venv
+```
+python3 -m venv /path/to/new/virtual/environment
+cd /path/to/new/virtual/environment
+source env/bin/activate
+```
+
+Install dependencies
 ```
 pip install -r requirements.txt
 ```
