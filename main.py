@@ -1,16 +1,21 @@
 import pypdf 
+from langchain.globals import set_verbose
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain.memory import ConversationBufferMemory
+from langchain.chains import ConversationalRetrievalChain
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.chains import RetrievalQA
-from langchain_community.llms import Ollama
+from langchain_ollama.llms import OllamaLLM
 from pathlib import Path
 import os
 import sys
 
+set_verbose(True)
+
 class PDFAnalyse():
     def __init__(self):
-        self.llm = Ollama(
+        self.llm = OllamaLLM(
                 model="mistral",
                 temperature=0.2
                 )
@@ -19,7 +24,13 @@ class PDFAnalyse():
                 model_name="sentence-transformers/all-mpnet-base-v2"
                 )
 
+        self.memory = ConversationBufferMemory(
+                memory_key="chat_history",
+                return_messages=True
+                )
+
         self.vector_store = None
+        self.conversation_chain = None
 
     def load_pdf(self, file_path):
         pdf_reader = pypdf.PdfReader(file_path)
@@ -48,21 +59,16 @@ class PDFAnalyse():
         
     def create_vector_store(self, chunks):
         self.vector_store = FAISS.from_texts(chunks, self.embeddings)
-    
-    def setup_qa_chain(self):
 
+    def setup_conversation_chain(self): 
         if self.vector_store is None:
             raise ValueError("Vector store not initialized. Please process a document first.")
 
-        retriever = self.vector_store.as_retriever(
-                search_kwargs={"k": 3}
-                )
-
-        return RetrievalQA.from_chain_type(
+        self.conversation_chain = ConversationalRetrievalChain.from_llm(
                 llm=self.llm,
-                chain_type="stuff",
-                retriever=retriever,
-                return_source_documents=True
+                retriever=self.vector_store.as_retriever(search_kwargs={ "k": 3 }),
+                memory=self.memory,
+                verbose=True
                 )
     
     def process_pdf(self, file_path):
@@ -84,8 +90,10 @@ class PDFAnalyse():
                 )
 
     def query(self, question):
-        qa_chain = self.setup_qa_chain()
-        return qa_chain({ "query": question})
+        if self.conversation_chain is None:
+            self.setup_conversation_chain()
+
+        return self.conversation_chain({ "question": question})
 
 def main():
     if len(sys.argv) != 2:
@@ -111,7 +119,7 @@ def main():
 
         print("\n\n\n")
         print("RESULT:\n")
-        print(answer["result"])
+        print(answer)
         print("\n")
 
 if __name__ == "__main__":
